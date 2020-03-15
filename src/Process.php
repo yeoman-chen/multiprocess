@@ -9,6 +9,8 @@
 
 namespace Kcloze\MultiProcess;
 
+use Kcloze\MultiProcess\Queue\Queue;
+
 class Process
 {
     const CHILD_PROCESS_CAN_RESTART        ='staticWorker'; //子进程可以重启,进程个数固定
@@ -37,6 +39,7 @@ class Process
     private $redis                =null; //redis连接
     private $logSaveFileWorker    = 'workers.log';
 
+    private $queue                = null;
     private $queueMaxNum          = 1000; //队列达到一定长度，增加子进程个数
     private $workersInfoList      = []; // 子进程队列
     private $dynamicWorkerNum     = []; //动态（不能重启）子进程计数，最大数为每个脚本配置dynamicWorkNum，它的个数是动态变化的
@@ -106,17 +109,17 @@ class Process
             $workOne['name']    = $value['name'];
             $workOne['binArgs'] = $value['binArgs'];
             //开启多个子进程
-            for ($i = 0; $i < $value['workNum']; ++$i) {
+            for ($i = 0; $i < $value['workerMinNum']; ++$i) {
                 $this->reserveExec($i, $workOne, self::CHILD_PROCESS_CAN_RESTART);
             }
-            $this->configWorkersByNameNum[$value['name']] = $value['workNum'];
+            $this->configWorkersByNameNum[$value['name']] = $value['workerMinNum'];
         }
 
         if (empty($this->timer)) {
             $this->registSignal();
             $this->registTimer();
-        }//启动成功，修改状态
-
+        }
+        //启动成功，修改状态
         $this->saveMasterData([self::REDIS_MASTER_KEY=>self::STATUS_RUNNING]);
     }
 
@@ -135,8 +138,8 @@ class Process
             $workOne['name']    = $value['name'];
             $workOne['binArgs'] = $value['binArgs'];
             //开启多个子进程
-            for ($i = 0; $i < $value['workNum']; ++$i) {
-                $this->reserveExec($i, $workOne);
+            for ($i = 0; $i < $value['workerMinNum']; ++$i) {
+                $this->reserveExec($i, $workOne, self::CHILD_PROCESS_CAN_RESTART);
             }
         }
 
@@ -280,41 +283,38 @@ class Process
                 $this->logger->log('主进程状态：' . $this->status . ' 数量：' . \count($this->workers), 'info', $this->logSaveFileWorker);
                 $this->logger->log('[' . $workName . ']子进程状态：' . $workNameStatus . ' 数量：' . $count . ' pids:' . serialize($workNameMembers), 'info', $this->logSaveFileWorker);
             }
+            $this->status  =$this->getMasterData(self::REDIS_MASTER_KEY);
+            $this->queue   = Queue::getQueue($this->config['queue']);
+            $this->queue->setTopics($this->config['exec']);
+
             // 动态进程控制todo
             foreach ($this->config['exec'] as $key => $value) {
-                if (!isset($value['dynamicWorkNum']) || $value['dynamicWorkNum'] < 1 || !isset($value['queueNumCacheKey']) || !$value['queueNumCacheKey']) {
-                    continue;
-                }
+               
                 if (!isset($value['bin']) || !isset($value['binArgs'])) {
                     $this->logger->log('config bin/binArgs must be not null!', 'error', $this->logSaveFileWorker);
+                    continue;
                 }
-                // 获取队列的缓存数据，根据入队列数量控制动态进程
-                $queueCacheData = $this->getCacheData($value['queueNumCacheKey']);
-                if(!$queueCacheData || !isset($queueCacheData["total"]) || !isset($queueCacheData["update_time"])) {
+
+                $this->dynamicWorkerNum[$value['name']] = isset($this->dynamicWorkerNum[$value['name']]) ? $this->dynamicWorkerNum[$value['name']] : 0;
+                if ($this->dynamicWorkerNum[$value['name']] >= $value['workerMaxNum']) {
+                    continue;
+                }
+                // 根据队列长度动态控制进程数量
+                $len = $this->queue->len($value['queueName']);
+                if($len <= $this->queueMaxNum) {
                     continue;
                 }
                 
-                $this->dynamicWorkerNum[$value['name']] = isset($this->dynamicWorkerNum[$value['name']]) ? $this->dynamicWorkerNum[$value['name']] : 0;
-                if ($queueCacheData["total"] < $this->queueMaxNum || $this->dynamicWorkerNum[$value['name']] >= $value['dynamicWorkNum']) {
-                    continue;
-                }
-                // 由缓存的total和update_time组成的key控制是否需要启动进程(只运行一次)
-                $runOneTimeKey = "sw_process_".$value['name']."_".$queueCacheData["total"]."_".$queueCacheData["update_time"];
-                $runOneTimeRes = $this->getCacheData($runOneTimeKey);
-                if($runOneTimeRes) {
-                    continue;
-                }
                 $workOne['bin']   = $value['bin'];
                 $workOne['name']  = $value['name'];
                 $workOne['binArgs']= $value['binArgs'];
-                $canStartNum = $value['dynamicWorkNum'] - $this->dynamicWorkerNum[$value['name']];
+                $canStartNum = $value['workerMaxNum'] - $this->dynamicWorkerNum[$value['name']];
                 //开启多个子进程
                 for ($i = 0; $i < $canStartNum; ++$i) {
                     $this->reserveExec($i, $workOne, self::CHILD_PROCESS_CAN_NOT_RESTART);
                     ++$this->dynamicWorkerNum[$value['name']];
                 }
 
-                $this->setCacheData($runOneTimeKey,1,7200);
             }
         });
     }
@@ -496,13 +496,16 @@ class Process
      * 设置缓存数据.
      *
      * @param string $key
+     * @param mixed  $value
+     * @param mixed  $timeout
      *
      * @return mixed
      */
-    private function setCacheData($key,$value,$timeout = 3600)
+    private function setCacheData($key, $value, $timeout = 3600)
     {
         $this->redis = $this->getRedis();
-        return $this->redis->set($key,$value,$timeout);
+
+        return $this->redis->set($key, $value, $timeout);
     }
 
     /**
