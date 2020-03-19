@@ -294,6 +294,10 @@ class Process
                     $this->logger->log('config bin/binArgs must be not null!', 'error', $this->logSaveFileWorker);
                     continue;
                 }
+                // 未配置动态进程，停止往下执行
+                if (!isset($value['workerMaxNum']) || $value['workerMaxNum'] <= $value['workerMinNum']) {
+                    continue;
+                }
 
                 $this->dynamicWorkerNum[$value['name']] = isset($this->dynamicWorkerNum[$value['name']]) ? $this->dynamicWorkerNum[$value['name']] : 0;
                 if ($this->dynamicWorkerNum[$value['name']] >= $value['workerMaxNum']) {
