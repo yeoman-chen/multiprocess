@@ -9,11 +9,11 @@
 
 namespace Kcloze\MultiProcess\Queue;
 
-use Enqueue\AmqpExt\AmqpConnectionFactory;
+use Kcloze\MultiProcess\Logs;
 
 class Queue
 {
-    public static function getQueue($config)
+    public static function getQueue(array $config, Logs $logger)
     {
         if (isset($config['type']) && $config['type'] == 'redis') {
             try {
@@ -28,9 +28,7 @@ class Queue
             $connection = new RedisTopicQueue($redis);
         } elseif (isset($config['type']) && $config['type'] == 'rabbitmq') {
             try {
-                $factory          = new AmqpConnectionFactory($config);
-                $context          = $factory->createContext();
-                $connection       = new RabbitmqTopicQueue($context, $config['exchange'] ?? null);
+                $connection       =  RabbitmqTopicQueue::getConnection($config, $logger);
             } catch (\Exception $e) {
                 die($e->getMessage() . PHP_EOL);
             }

@@ -284,7 +284,7 @@ class Process
                 $this->logger->log('[' . $workName . ']子进程状态：' . $workNameStatus . ' 数量：' . $count . ' pids:' . serialize($workNameMembers), 'info', $this->logSaveFileWorker);
             }
             $this->status  =$this->getMasterData(self::REDIS_MASTER_KEY);
-            $this->queue   = Queue::getQueue($this->config['queue']);
+            $this->queue   = Queue::getQueue($this->config['queue'],$this->logger);
             $this->queue->setTopics($this->config['exec']);
 
             // 动态进程控制todo
@@ -300,7 +300,7 @@ class Process
                     continue;
                 }
                 // 根据队列长度动态控制进程数量
-                $len = $this->queue->len($value['queueName']);
+                $len = $this->queue->len($value['queue']);
                 if($len <= $this->queueMaxNum) {
                     continue;
                 }
@@ -308,7 +308,8 @@ class Process
                 $workOne['bin']   = $value['bin'];
                 $workOne['name']  = $value['name'];
                 $workOne['binArgs']= $value['binArgs'];
-                $canStartNum = $value['workerMaxNum'] - $this->dynamicWorkerNum[$value['name']];
+                $canStartNum = $value['workerMaxNum'] - $value['workerMinNum'] - $this->dynamicWorkerNum[$value['name']];
+                
                 //开启多个子进程
                 for ($i = 0; $i < $canStartNum; ++$i) {
                     $this->reserveExec($i, $workOne, self::CHILD_PROCESS_CAN_NOT_RESTART);

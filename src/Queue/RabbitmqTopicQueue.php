@@ -1,24 +1,23 @@
-<?php
-
-/*
- * This file is part of PHP CS Fixer.
- * (c) kcloze <pei.greet@qq.com>
- * This source file is subject to the MIT license that is bundled
- * with this source code in the file LICENSE.
- */
+<?php 
 
 namespace Kcloze\MultiProcess\Queue;
 
-use Enqueue\AmqpExt\AmqpContext;
-use Interop\Amqp\AmqpQueue;
-use Interop\Amqp\AmqpTopic;
+use PhpAmqpLib\Connection\AMQPStreamConnection;
+use PhpAmqpLib\Message\AMQPMessage;
 
-class RabbitmqTopicQueue extends BaseTopicQueue
-{
-    const EXCHANGE  ='php.amqp.ext';
+use Kcloze\MultiProcess\Logs;
+use Kcloze\MultiProcess\Utils;
 
-    public $queue   =null;
-    private $context=null;
+class RabbitmqTopicQueue extends BaseTopicQueue {
+
+    private $logger     = null;
+    private $config     = [];
+
+    public $connection = '';
+    public $channel    = '';
+    public $exchange   = '';
+    public $queue      = '';
+    public $routingKey = '';
 
     /**
      * RabbitmqTopicQueue constructor.
@@ -27,55 +26,133 @@ class RabbitmqTopicQueue extends BaseTopicQueue
      * @param array $queue
      * @param mixed $exchange
      */
-    public function __construct(AmqpContext $context, $exchange)
+    public function __construct(array $config, Logs $logger)
     {
-        $rabbitTopic  = $context->createTopic($exchange ?? self::EXCHANGE);
-        $rabbitTopic->addFlag(AmqpTopic::FLAG_DURABLE);
-        $rabbitTopic->setType(AmqpTopic::TYPE_FANOUT);
-        $context->declareTopic($rabbitTopic);
-        $this->context = $context;
+        $this->config  = $config;
+        $this->logger  = $logger;
+
+        $this->connection = new AMQPStreamConnection($config['host'], $config['port'], $config['user'], $config['pass']);
+        $this->channel    = $this->connection->channel();
+
+    }
+    /**
+     * 创建连接
+     */
+    public static function getConnection(array $config, Logs $logger)
+    {
+        if(!$config['host'] || !$config['port'] || !$config['user'] || !$config['pass']) {
+            $error = "参数不完整：".var_export($config,true);
+            $logger->log($error, 'error');
+            return false;
+        }
+        try {
+            $connection       = new self($config, $logger);
+        } catch (\AMQPConnectionException $e) {
+            Utils::catchError($logger, $e);
+
+            return false;
+        } catch (\Throwable $e) {
+            Utils::catchError($logger, $e);
+
+            return false;
+        } catch (\Exception $e) {
+            Utils::catchError($logger, $e);
+
+            return false;
+        }
+
+        return $connection;
     }
 
+    /**
+     * 发送消息
+     */
     public function push($topic, $value)
     {
-        $queue   = $this->createQueue($topic);
-        $message = $this->context->createMessage(serialize($value));
-
-        $result=$this->context->createProducer()->send($queue, $message);
+        $this->createQueue($topic);
+        $message = new AMQPMessage(json_encode($value), array('content_type' => 'text/plain', 'delivery_mode' => AMQPMessage::DELIVERY_MODE_PERSISTENT));
+        $result = $this->channel->basic_publish($msg, $this->exchange, $this->routingKey);
 
         return $result;
     }
-
+    /**
+     * 消费消息
+     */
     public function pop($topic)
     {
-        $queue    = $this->createQueue($topic);
-        $consumer = $this->context->createConsumer($queue);
-        if ($m = $consumer->receive(1)) {
-            $result=$m->getBody();
-            $consumer->acknowledge($m);
+        $this->createQueue($topic);
+        $this->channel->exchange_declare($this->exchange, 'direct', false, false, false);
+        $this->channel->queue_declare($this->queue, false, true, false, false);
+        $this->channel->queue_bind($this->queue, $this->exchange, $this->routingKey);
+
+        $callback = $topic["callback"];
+
+        $this->channel->basic_qos(null, 1, null);
+        $this->channel->basic_consume($this->queue, '', false, false, false, false, $callback);
+
+        try {
+            while (\count($this->channel->callbacks)) {
+                $this->channel->wait(null, false, 70);
+            }
+        } catch (\Exception $e) {
+            $this->logger->log('【rabbitmq】normal quit', 'info');
         }
 
-        return !empty($result) ? unserialize($result) : null;
+        $this->close();
     }
 
     //这里的topic跟rabbitmq不一样，其实就是队列名字
     public function len($topic)
     {
-        $queue = $this->createQueue($topic);
+        $hostConf["host"] = $this->config["host"];
+        $hostConf["port"] = $this->config["port"];
+        $hostConf["login"] = $this->config["user"];
+        $hostConf["password"] = $this->config["pass"];
+        $hostConf["vhost"] = $this->config["vhost"];
+        try {
+            $conn = new \AMQPConnection($hostConf);
+            $conn->connect();
+        } catch (\AMQPConnectionException $e) {
+            Utils::catchError($logger, $e);
+            throw $e;
+        }
 
-        return $this->context->declareQueue($queue);
+        if (!$conn->isConnected()) {
+            throw new \Exception('Connection Break');
+        }
+
+        //在连接内创建一个通道
+        $ch = new \AMQPChannel($conn);
+        $q  = new \AMQPQueue($ch);
+        $q->setName($topic);
+        $q->setFlags(\AMQP_PASSIVE);
+        $len = $q->declareQueue();
+        return $len;
+    }
+
+    /**
+     * 创建队列
+     */
+    public function createQueue($topic)
+    {
+        $this->queue = $topic["queue"] ?? "";
+        $this->exchange = $topic["exchange"] ?? "";
+        $this->routingKey = $topic["routingKey"] ?? "";
+        try{
+            $this->channel->queue_declare($this->queue, false, true, false, false);
+            $this->channel->exchange_declare($this->exchange, 'direct', false, true, false);
+            //$this->channel->queue_bind($this->queue, $this->exchange, $this->routingKey);
+        }catch(\Exception $e) {
+            Utils::catchError($this->logger, $e);
+            return false;
+        }
+        
+        return true;
     }
 
     public function close()
     {
-        $this->context->close();
-    }
-
-    private function createQueue($topic)
-    {
-        $queue = $this->context->createQueue($topic);
-        $queue->addFlag(AmqpQueue::FLAG_DURABLE);
-
-        return $queue;
+        $this->channel->close();
+        $this->connection->close();
     }
 }

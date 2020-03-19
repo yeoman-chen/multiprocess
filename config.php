@@ -16,7 +16,7 @@ return $config = [
     'processName'      => ':swooleMultiProcess', // 设置进程名, 方便管理, 默认值 swooleTopicQueue
     'sleepTime'        => 3000, // 子进程退出之后，自动拉起暂停毫秒数
     'redis'            => [
-        'host'  => '192.168.179.136',
+        'host'  => '127.0.0.1',
         'port'  => '6379',
         'preKey'=> 'SwooleMultiProcess-',
         //'password'=>'',
@@ -32,7 +32,9 @@ return $config = [
             'binArgs'         => ['/mnt/hgfs/www/saletool/think', 'testAmqp', '0'],
             'workerMinNum'    => 1, // 外部程序最小进程数(固定)
             'workerMaxNum'    => 2, // 外部程序最大进程数,最大进程数=最小进程数时，动态进程功能失效
-            'queueName'       => 'msgs',// 如需根据队列长度动态控制进程数量，需要设置为非空
+            'exchange'        => 'router',// 如需根据队列长度动态控制进程数量，需要设置为非空
+            'queue'           => 'msgs',// 如需根据队列长度动态控制进程数量，需要设置为非空
+            'routingKey'      => 'goods_syncdb_addvv',// 如需根据队列长度动态控制进程数量，需要设置为非空
         ],
         /* [
             'name'      => 'kcloze-test-1',
@@ -51,9 +53,9 @@ return $config = [
     // rabbitmq
     'queue'   => [
         'type'      => 'rabbitmq',
-        'host'      => '139.199.160.203',
+        'host'      => '127.0.0.1',
         'user'      => 'admin',
-        'pass'      => 'jzkj@1236#',
+        'pass'      => '123456',
         'port'      => '5672',
         'vhost'     => '/',
     ],
