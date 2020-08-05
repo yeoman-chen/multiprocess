@@ -127,6 +127,7 @@ class RabbitmqTopicQueue extends BaseTopicQueue {
         $q->setName($topic);
         $q->setFlags(\AMQP_PASSIVE);
         $len = $q->declareQueue();
+        $conn->disconnect();
         return $len;
     }
 

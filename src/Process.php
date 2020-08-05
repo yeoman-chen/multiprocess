@@ -40,7 +40,7 @@ class Process
     private $logSaveFileWorker    = 'workers.log';
 
     private $queue                = null;
-    private $queueMaxNum          = 1000; //队列达到一定长度，增加子进程个数
+    private $queueMaxNum          = 5; //队列达到一定长度，增加子进程个数
     private $workersInfoList      = []; // 子进程队列
     private $dynamicWorkerNum     = []; //动态（不能重启）子进程计数，最大数为每个脚本配置dynamicWorkNum，它的个数是动态变化的
 

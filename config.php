@@ -26,16 +26,57 @@ return $config = [
 
     //exec任务相关,name的名字不能相同
     'exec'      => [
-        [
+        /*[
             'name'            => 'kcloze-test-1',
             'bin'             => '/usr/local/php7/bin/php',
             'binArgs'         => ['/mnt/hgfs/www/saletool/think', 'testAmqp', '0'],
-            'workerMinNum'    => 1, // 外部程序最小进程数(固定)
-            'workerMaxNum'    => 2, // 外部程序最大进程数,最大进程数=最小进程数时，动态进程功能失效
+            'workerMinNum'    => 0, // 外部程序最小进程数(固定)
+            'workerMaxNum'    => 0, // 外部程序最大进程数,最大进程数=最小进程数时，动态进程功能失效
             'exchange'        => 'router',// 如需根据队列长度动态控制进程数量，需要设置为非空
             'queue'           => 'msgs',// 如需根据队列长度动态控制进程数量，需要设置为非空
             'routingKey'      => 'goods_syncdb_addvv',// 如需根据队列长度动态控制进程数量，需要设置为非空
+        ],*/
+        [
+            'name'            => 'kcloze-test-1',
+            'bin'             => '/usr/local/php7/bin/php',
+            'binArgs'         => ['/data/www/easy.jianzhikeji.com' . '/think', 'replyMsgConsume', 'timing'],
+            'workerMinNum'    => 0, // 外部程序最小进程数(固定)
+            'workerMaxNum'    => 1, // 外部程序最大进程数,最大进程数=最小进程数时，动态进程功能失效
+            'exchange'        => 'wjy_router',// 如需根据队列长度动态控制进程数量，需要设置为非空
+            'queue'           => 'wjy_msg_queue_timing_new',// 如需根据队列长度动态控制进程数量，需要设置为非空
+            'routingKey'      => 'wjy_msg_timing_new',// 如需根据队列长度动态控制进程数量，需要设置为非空
         ],
+        [
+            'name'      => 'kcloze-tp5-SendkefuSubscribe-text',
+            'bin'       => '/usr/local/php/bin/php',
+            'binArgs'   => ['/data/www/easy.jianzhikeji.com' . '/think', 'SendkefuSubscribe', 'text'],
+            'workerMinNum'   => 1,
+        ],
+        [
+            'name'      => 'kcloze-tp5-SendkefuSubscribe-image',
+            'bin'       => '/usr/local/php/bin/php',
+            'binArgs'   => ['/data/www/easy.jianzhikeji.com' . '/think', 'SendkefuSubscribe', 'image'],
+            'workerMinNum'   => 1,
+        ],
+        [
+            'name'      => 'kcloze-tp5-SendkefuSubscribe-news',
+            'bin'       => '/usr/local/php/bin/php',
+            'binArgs'   => ['/data/www/easy.jianzhikeji.com' . '/think', 'SendkefuSubscribe', 'news'],
+            'workerMinNum'   => 1,
+        ],
+        [
+            'name'      => 'kcloze-tp5-SendkefuSubscribe-voice',
+            'bin'       => '/usr/local/php/bin/php',
+            'binArgs'   => ['/data/www/easy.jianzhikeji.com' . '/think', 'SendkefuSubscribe', 'voice'],
+            'workerMinNum'   => 1,
+        ],
+        [
+            'name'      => 'kcloze-tp5-replyMsgPublish-delay',
+            'bin'       => '/usr/local/php/bin/php',
+            'binArgs'   => ['/data/www/easy.jianzhikeji.com' . '/think', 'replyMsgPublish', 'delay'],
+            'workerMinNum'   => 1,
+        ],
+
         /* [
             'name'      => 'kcloze-test-1',
             'bin'       => '/usr/local/bin/php',
